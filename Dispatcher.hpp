@@ -128,6 +128,7 @@ class Dispatcher {
 		size_t m_sizeInitTotal;
 		size_t m_sizeInitDone;
 		bool m_quit;
+		size_t m_generatedCount;
 };
 
 #endif /* HPP_DISPATCHER */

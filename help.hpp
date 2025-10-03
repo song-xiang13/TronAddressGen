@@ -11,6 +11,7 @@ Usage: ./TronAddressGen [options]
 
   Mode:
     --matching          Match input, file or single address string
+    --generate          Generate specified number of random addresses (1-10000)
 
   Matching Parameters:
     --prefix-count      Minimum prefix match count, default 0
@@ -26,13 +27,16 @@ Usage: ./TronAddressGen [options]
 
 Examples:
 
+  # Matching mode (original functionality)
   ./TronAddressGen --matching profanity.txt
   ./TronAddressGen --matching profanity.txt --skip 1
   ./TronAddressGen --matching profanity.txt --prefix-count 1 --suffix-count 8
-  ./TronAddressGen --matching profanity.txt --prefix-count 1 --suffix-count 10 --quit-count 1
-  ./TronAddressGen --matching profanity.txt --output result.txt
-  ./TronAddressGen --matching profanity.txt --post http://127.0.0.1:7002/api
   ./TronAddressGen --matching TUqEg3dzVEJNQSVW2HY98z5X8SBdhmao8D --prefix-count 2 --suffix-count 4 --quit-count 1
+
+  # Generate mode (new functionality)
+  ./TronAddressGen --generate 10                    # Generate 10 random addresses with correct private key mapping
+  ./TronAddressGen --generate 100 --output result.txt   # Generate 100 addresses to file
+  ./TronAddressGen --generate 50 --post http://127.0.0.1:7002/api   # Generate 50 addresses and send to URL
 
 About:
 
@@ -45,7 +49,9 @@ About:
 Security Warning:
 
   Always verify that generated addresses print correctly and match their private keys.
+  The generate mode creates cryptographically valid private key/address pairs.
   Always use multi-signature for addresses to ensure account security.
+  Test any generated address with small amounts before using for large transactions.
 )";
 
 #endif /* HPP_HELP */

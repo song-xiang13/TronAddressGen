@@ -218,7 +218,8 @@ Dispatcher::Dispatcher(cl_context &clContext,
 	  m_outputFile(outputFile),
 	  m_postUrl(postUrl),
 	  m_eventFinished(NULL),
-	  m_countPrint(0)
+	  m_countPrint(0),
+	  m_generatedCount(0)
 {
 }
 
@@ -514,30 +515,52 @@ static void printResult(
 
 void Dispatcher::handleResult(Device &d)
 {
-	for (auto i = PROFANITY_MAX_SCORE; i > m_clScoreMax; --i)
-	{
-		result &r = d.m_memResult[i];
+	if (m_mode.isGenerateMode) {
+		// In generate mode, check all score levels for any match
+		for (auto i = 0; i <= PROFANITY_MAX_SCORE; ++i) {
+			result &r = d.m_memResult[i];
 
-		if (r.found > 0 && i >= d.m_clScoreMax)
+			if (r.found > 0) {
+				std::lock_guard<std::mutex> lock(m_mutex);
+
+				if (m_generatedCount < m_mode.generateCount) {
+					m_generatedCount++;
+					printResult(d.m_clSeed, d.m_round, r, i, timeStart, m_mode, m_outputFile, m_postUrl);
+
+					if (m_generatedCount >= m_mode.generateCount) {
+						m_quit = true;
+						return;
+					}
+				}
+			}
+		}
+	} else {
+		// Original matching mode logic
+		for (auto i = PROFANITY_MAX_SCORE; i > m_clScoreMax; --i)
 		{
-			d.m_clScoreMax = i;
-			CLMemory<cl_uchar>::setKernelArg(d.m_kernelScore, 4, d.m_clScoreMax);
+			result &r = d.m_memResult[i];
 
-			std::lock_guard<std::mutex> lock(m_mutex);
-			if (i >= m_clScoreMax)
+			if (r.found > 0 && i >= d.m_clScoreMax)
 			{
+				d.m_clScoreMax = i;
+				CLMemory<cl_uchar>::setKernelArg(d.m_kernelScore, 4, d.m_clScoreMax);
 
-				m_clScoreMax = i;
-
-				if ((m_clScoreQuit && i >= m_clScoreQuit) || m_clScoreMax >= PROFANITY_MAX_SCORE)
+				std::lock_guard<std::mutex> lock(m_mutex);
+				if (i >= m_clScoreMax)
 				{
-					m_quit = true;
+
+					m_clScoreMax = i;
+
+					if ((m_clScoreQuit && i >= m_clScoreQuit) || m_clScoreMax >= PROFANITY_MAX_SCORE)
+					{
+						m_quit = true;
+					}
+
+					printResult(d.m_clSeed, d.m_round, r, i, timeStart, m_mode, m_outputFile, m_postUrl);
 				}
 
-				printResult(d.m_clSeed, d.m_round, r, i, timeStart, m_mode, m_outputFile, m_postUrl);
+				break;
 			}
-
-			break;
 		}
 	}
 }

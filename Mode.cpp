@@ -7,7 +7,7 @@
 #include <fstream>
 #include <string>
 
-Mode::Mode() : score(0), prefixCount(0), suffixCount(0), matchingCount(0) {
+Mode::Mode() : score(0), prefixCount(0), suffixCount(0), matchingCount(0), isGenerateMode(false), generateCount(0) {
 
 }
 
@@ -64,6 +64,27 @@ Mode Mode::matching(std::string matchingInput) {
 				r.data2.push_back(valHi | valLo);
 			}
 		}
+	}
+
+	return r;
+}
+
+Mode Mode::generate(const size_t count) {
+	Mode r;
+	r.isGenerateMode = true;
+	r.generateCount = count;
+	r.matchingCount = 1;
+
+	// For generate mode, create a very easy match pattern
+	// We'll match the Tron address prefix "41" in hex (which becomes "T" in base58)
+	// This means any valid Tron address will match, allowing fast generation
+	r.data1.push_back(0xFF); // Match exactly on first byte
+	r.data2.push_back(0x41); // Tron address prefix is 0x41
+
+	// Add more bytes to have enough data for the kernel
+	for(int i = 1; i < 20; i++) {
+		r.data1.push_back(0x00); // Don't care about other bytes
+		r.data2.push_back(0x00); // Don't care about the value
 	}
 
 	return r;

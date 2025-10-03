@@ -8,6 +8,8 @@
 #include <vector>
 #include <map>
 #include <set>
+#include <random>
+#include <iomanip>
 
 #if defined(__APPLE__) || defined(__MACOSX)
 #include <OpenCL/cl.h>
@@ -190,9 +192,11 @@ int main(int argc, char **argv)
 		size_t prefixCount = 0;
 		size_t suffixCount = 6;
 		size_t quitCount = 0;
+		size_t generateCount = 0;
 
 		argp.addSwitch('h', "help", bHelp);
 		argp.addSwitch('m', "matching", matchingInput);
+		argp.addSwitch('g', "generate", generateCount);
 		argp.addSwitch('w', "work", worksizeLocal);
 		argp.addSwitch('W', "work-max", worksizeMax);
 		argp.addSwitch('n', "no-cache", bNoCache);
@@ -217,9 +221,21 @@ int main(int argc, char **argv)
 			return 0;
 		}
 
-		if (matchingInput.empty())
+		if (matchingInput.empty() && generateCount == 0)
 		{
-			std::cout << "error: matching file must be specified :<" << std::endl;
+			std::cout << "error: either --matching or --generate must be specified" << std::endl;
+			return 1;
+		}
+
+		if (!matchingInput.empty() && generateCount > 0)
+		{
+			std::cout << "error: cannot use both --matching and --generate at the same time" << std::endl;
+			return 1;
+		}
+
+		if (generateCount > 0 && generateCount > 10000)
+		{
+			std::cout << "error: generate count cannot exceed 10000" << std::endl;
 			return 1;
 		}
 
@@ -245,9 +261,67 @@ int main(int argc, char **argv)
 			return 1;
 		}
 
-		Mode mode = Mode::matching(matchingInput);
+		Mode mode = generateCount > 0 ? Mode::generate(generateCount) : Mode::matching(matchingInput);
 
-		if (mode.matchingCount <= 0)
+		if (generateCount > 0) {
+			// For generate mode, use Python script to generate correct addresses
+			std::cout << "Generate mode: Creating " << generateCount << " random Tron addresses..." << std::endl;
+
+			// Use the same random seed generation as the OpenCL version
+			for (size_t i = 0; i < generateCount; i++) {
+				// Generate random private key (32 bytes)
+				std::random_device rd;
+				std::mt19937_64 gen(rd());
+				std::uniform_int_distribution<uint64_t> dis;
+
+				cl_ulong4 seedRes;
+				seedRes.s[0] = dis(gen);
+				seedRes.s[1] = dis(gen);
+				seedRes.s[2] = dis(gen);
+				seedRes.s[3] = dis(gen);
+
+				std::ostringstream ss;
+				ss << std::hex << std::setfill('0');
+				ss << std::setw(16) << seedRes.s[3] << std::setw(16) << seedRes.s[2]
+				   << std::setw(16) << seedRes.s[1] << std::setw(16) << seedRes.s[0];
+				const std::string strPrivate = ss.str();
+
+				// Call Python script to generate correct Tron address
+				std::string command = "python3 gen_tron_address_real.py " + strPrivate;
+				FILE* pipe = popen(command.c_str(), "r");
+				std::string tronAddress;
+
+				if (pipe) {
+					char buffer[256];
+					if (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+						tronAddress = buffer;
+						// Remove newline
+						if (!tronAddress.empty() && tronAddress.back() == '\n') {
+							tronAddress.pop_back();
+						}
+					}
+					pclose(pipe);
+				}
+
+				if (tronAddress.empty()) {
+					tronAddress = "Error generating address";
+				}
+
+				std::cout << "  Address " << (i+1) << ": Private: " << strPrivate
+				         << " Address: " << tronAddress << std::endl;
+
+				if (!outputFile.empty()) {
+					std::ofstream file(outputFile, std::ios::app);
+					if (file.is_open()) {
+						file << strPrivate << "," << tronAddress << std::endl;
+						file.close();
+					}
+				}
+			}
+			return 0;
+		}
+
+		if (!mode.isGenerateMode && mode.matchingCount <= 0)
 		{
 			std::cout << "error: please check your matching file to make sure the path and format are correct :<" << std::endl;
 			return 1;

@@ -16,13 +16,16 @@ class Mode {
 
 	public:
 		static Mode matching(const std::string fileName);
-		
+		static Mode generate(const size_t count);
+
 		std::vector<cl_uchar> data1;
 		std::vector<cl_uchar> data2;
 		cl_uchar score;
 		cl_uchar prefixCount;
 		cl_uchar suffixCount;
 		cl_uchar matchingCount;
+		bool isGenerateMode;
+		size_t generateCount;
 };
 
 #endif /* HPP_MODE */

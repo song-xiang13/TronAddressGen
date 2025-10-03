@@ -36,25 +36,43 @@ std::string readFile(const char *const szFilename)
 	return contents.str();
 }
 
-std::vector<cl_device_id> getAllDevices(cl_device_type deviceType = CL_DEVICE_TYPE_GPU)
+std::vector<cl_device_id> getAllDevices(cl_device_type deviceType = CL_DEVICE_TYPE_ALL)
 {
 	std::vector<cl_device_id> vDevices;
 
 	cl_uint platformIdCount = 0;
-	clGetPlatformIDs(0, NULL, &platformIdCount);
+	cl_int ret = clGetPlatformIDs(0, NULL, &platformIdCount);
+	if (ret != CL_SUCCESS || platformIdCount == 0) {
+		std::cout << "No OpenCL platforms found" << std::endl;
+		return vDevices;
+	}
 
 	std::vector<cl_platform_id> platformIds(platformIdCount);
-	clGetPlatformIDs(platformIdCount, platformIds.data(), NULL);
+	ret = clGetPlatformIDs(platformIdCount, platformIds.data(), NULL);
+	if (ret != CL_SUCCESS) {
+		std::cout << "Failed to get platform IDs" << std::endl;
+		return vDevices;
+	}
 
 	for (auto it = platformIds.cbegin(); it != platformIds.cend(); ++it)
 	{
-		cl_uint countDevice;
-		clGetDeviceIDs(*it, deviceType, 0, NULL, &countDevice);
+		cl_uint countDevice = 0;
+		ret = clGetDeviceIDs(*it, deviceType, 0, NULL, &countDevice);
+		if (ret != CL_SUCCESS || countDevice == 0) {
+			continue; // Skip platforms with no devices
+		}
+
+		// Security check: limit device count per platform
+		if (countDevice > 50) {
+			std::cout << "Warning: Platform has " << countDevice << " devices, limiting to 50" << std::endl;
+			countDevice = 50;
+		}
 
 		std::vector<cl_device_id> deviceIds(countDevice);
-		clGetDeviceIDs(*it, deviceType, countDevice, deviceIds.data(), &countDevice);
-
-		std::copy(deviceIds.begin(), deviceIds.end(), std::back_inserter(vDevices));
+		ret = clGetDeviceIDs(*it, deviceType, countDevice, deviceIds.data(), NULL);
+		if (ret == CL_SUCCESS) {
+			std::copy(deviceIds.begin(), deviceIds.end(), std::back_inserter(vDevices));
+		}
 	}
 
 	return vDevices;
@@ -254,26 +272,46 @@ int main(int argc, char **argv)
 			{
 				continue;
 			}
-			cl_device_id &deviceId = vFoundDevices[i];
-			const auto strName = clGetWrapperString(clGetDeviceInfo, deviceId, CL_DEVICE_NAME);
-			const auto computeUnits = clGetWrapper<cl_uint>(clGetDeviceInfo, deviceId, CL_DEVICE_MAX_COMPUTE_UNITS);
-			const auto globalMemSize = clGetWrapper<cl_ulong>(clGetDeviceInfo, deviceId, CL_DEVICE_GLOBAL_MEM_SIZE);
-			bool precompiled = false;
 
-			if (!bNoCache)
-			{
-				std::ifstream fileIn(getDeviceCacheFilename(deviceId, inverseSize), std::ios::binary);
-				if (fileIn.is_open())
-				{
-					vDeviceBinary.push_back(std::string((std::istreambuf_iterator<char>(fileIn)), std::istreambuf_iterator<char>()));
-					vDeviceBinarySize.push_back(vDeviceBinary.back().size());
-					precompiled = true;
+			try {
+				cl_device_id &deviceId = vFoundDevices[i];
+
+				// Safely get device name
+				size_t nameSize = 0;
+				cl_int ret = clGetDeviceInfo(deviceId, CL_DEVICE_NAME, 0, NULL, &nameSize);
+				if (ret != CL_SUCCESS || nameSize == 0 || nameSize > 1024) {
+					std::cout << "  Device-" << i << ": [Name unavailable]" << std::endl;
+					continue;
 				}
-			}
 
-			std::cout << "  GPU-" << i << ": " << strName << ", 显存" << globalMemSize << " bytes available, " << computeUnits << "  计算单元  (当前正在使用预编译的kernel？" << (precompiled ? "yes" : "no") << ")" << std::endl;
-			vDevices.push_back(vFoundDevices[i]);
-			mDeviceIndex[vFoundDevices[i]] = i;
+				std::vector<char> deviceName(nameSize);
+				ret = clGetDeviceInfo(deviceId, CL_DEVICE_NAME, nameSize, deviceName.data(), NULL);
+				if (ret != CL_SUCCESS) {
+					std::cout << "  Device-" << i << ": [Failed to get name]" << std::endl;
+					continue;
+				}
+
+				// Get device type
+				cl_device_type deviceType;
+				ret = clGetDeviceInfo(deviceId, CL_DEVICE_TYPE, sizeof(deviceType), &deviceType, NULL);
+				std::string typeStr = "UNKNOWN";
+				if (ret == CL_SUCCESS) {
+					if (deviceType == CL_DEVICE_TYPE_CPU) typeStr = "CPU";
+					else if (deviceType == CL_DEVICE_TYPE_GPU) typeStr = "GPU";
+					else if (deviceType == CL_DEVICE_TYPE_ACCELERATOR) typeStr = "ACCELERATOR";
+				}
+
+				std::cout << "  " << typeStr << "-" << i << ": " << deviceName.data() << std::endl;
+
+				vDevices.push_back(vFoundDevices[i]);
+				mDeviceIndex[vFoundDevices[i]] = i;
+			}
+			catch (const std::exception& e) {
+				std::cout << "  Error processing device " << i << ": " << e.what() << std::endl;
+			}
+			catch (...) {
+				std::cout << "  Unknown error processing device " << i << std::endl;
+			}
 		}
 
 		if (vDevices.empty())
@@ -296,7 +334,7 @@ int main(int argc, char **argv)
 			// Create program from binaries
 			bUsedCache = true;
 
-			std::cout << "  加载Kernel ..." << std::flush;
+			std::cout << "  Loading kernel ..." << std::flush;
 			const unsigned char **pKernels = new const unsigned char *[vDevices.size()];
 			for (size_t i = 0; i < vDeviceBinary.size(); ++i)
 			{
@@ -314,7 +352,7 @@ int main(int argc, char **argv)
 		else
 		{
 			// Create a program from the kernel source
-			std::cout << "  编译Kernel ..." << std::flush;
+			std::cout << "  Loading kernel ..." << std::flush;
 
 			// const std::string strKeccak = readFile("keccak.cl");
 			// const std::string strSha256 = readFile("sha256.cl");
@@ -332,10 +370,26 @@ int main(int argc, char **argv)
 		// Build the program
 		std::cout << "  Program building ..." << std::flush;
 		const std::string strBuildOptions = "-D PROFANITY_INVERSE_SIZE=" + toString(inverseSize) + " -D PROFANITY_MAX_SCORE=" + toString(PROFANITY_MAX_SCORE);
-		if (printResult(clBuildProgram(clProgram, vDevices.size(), vDevices.data(), strBuildOptions.c_str(), NULL, NULL)))
+		cl_int buildResult = clBuildProgram(clProgram, vDevices.size(), vDevices.data(), strBuildOptions.c_str(), NULL, NULL);
+		if (buildResult != CL_SUCCESS)
 		{
+			std::cout << "Build failed with error: " << toString(buildResult) << std::endl;
+			// Get build log
+			for (size_t i = 0; i < vDevices.size(); ++i)
+			{
+				size_t logSize;
+				clGetProgramBuildInfo(clProgram, vDevices[i], CL_PROGRAM_BUILD_LOG, 0, NULL, &logSize);
+				if (logSize > 1)
+				{
+					char* log = new char[logSize];
+					clGetProgramBuildInfo(clProgram, vDevices[i], CL_PROGRAM_BUILD_LOG, logSize, log, NULL);
+					std::cout << "Device " << i << " build log: " << log << std::endl;
+					delete[] log;
+				}
+			}
 			return 1;
 		}
+		std::cout << "Done" << std::endl;
 
 		// Save binary to improve future start times
 		if (!bUsedCache && !bNoCache)
@@ -352,14 +406,31 @@ int main(int argc, char **argv)
 
 		std::cout << std::endl;
 
-		Dispatcher d(clContext, clProgram, mode, worksizeMax == 0 ? inverseSize * inverseMultiple : worksizeMax, inverseSize, inverseMultiple, quitCount, outputFile, postUrl);
+		try {
+			std::cout << "Creating Dispatcher..." << std::flush;
+			Dispatcher d(clContext, clProgram, mode, worksizeMax == 0 ? inverseSize * inverseMultiple : worksizeMax, inverseSize, inverseMultiple, quitCount, outputFile, postUrl);
+			std::cout << "Done" << std::endl;
 
-		for (auto &i : vDevices)
-		{
-			d.addDevice(i, worksizeLocal, mDeviceIndex[i]);
+			std::cout << "Adding devices..." << std::flush;
+			for (auto &i : vDevices)
+			{
+				d.addDevice(i, worksizeLocal, mDeviceIndex[i]);
+			}
+			std::cout << "Done" << std::endl;
+
+			std::cout << "Starting computation..." << std::endl;
+			d.run();
 		}
-
-		d.run();
+		catch (const std::exception& e) {
+			std::cout << "Exception in computation: " << e.what() << std::endl;
+			clReleaseContext(clContext);
+			return 1;
+		}
+		catch (...) {
+			std::cout << "Unknown exception in computation phase" << std::endl;
+			clReleaseContext(clContext);
+			return 1;
+		}
 		clReleaseContext(clContext);
 		return 0;
 	}

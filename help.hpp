@@ -4,27 +4,27 @@
 #include <string>
 
 const std::string g_strHelp = R"(
-用法: ./TronAddressGen [选项]
+Usage: ./TronAddressGen [options]
 
-  帮助:
-    --help              显示帮助信息
+  Basic:
+    --help              Show help information
 
-  带参数的模式:
-    --matching          匹配输入、文件或单个地址。
+  Mode:
+    --matching          Match input, file or single address string
 
-  匹配配置:
-    --prefix-count      最小前缀匹配数量，默认值为 0
-    --suffix-count      最小后缀匹配数量，默认值为 6
-    --quit-count        当生成的数量大于此值时退出程序，默认值为 0
+  Matching Parameters:
+    --prefix-count      Minimum prefix match count, default 0
+    --suffix-count      Minimum suffix match count, default 6
+    --quit-count        Exit program when generated addresses exceed this value, default 0
 
-  设备控制:
-    --skip              跳过由索引给定的设备
+  Device Management:
+    --skip              Skip device by index number
 
-  输出控制:
-    --output            输出结果的文件
-    --post              结果要发布到的 URL
+  Output Management:
+    --output            Output to file
+    --post              Send to URL if needed
 
-示例:
+Examples:
 
   ./TronAddressGen --matching profanity.txt
   ./TronAddressGen --matching profanity.txt --skip 1
@@ -34,18 +34,18 @@ const std::string g_strHelp = R"(
   ./TronAddressGen --matching profanity.txt --post http://127.0.0.1:7002/api
   ./TronAddressGen --matching TUqEg3dzVEJNQSVW2HY98z5X8SBdhmao8D --prefix-count 2 --suffix-count 4 --quit-count 1
 
-关于:
+About:
 
-  TronAddressGen 是一个用于 Tron 的虚荣地址生成器: https://tron.network/
-  该软件基于以太坊 profanity 进行了修改: https://github.com/johguse/profanity
-  请确保您运行的程序是从以下地址下载的: https://github.com/GG4mida/profanity-tron
-  作者: telegram -> @jackslowfak
-  清理修复：telegram -> @MrMiHa
+  TronAddressGen is a Tron blockchain address generator: https://tron.network/
+  Based on Ethereum profanity tool: https://github.com/johguse/profanity
+  Ensure you get the program from the latest address: https://github.com/GG4mida/profanity-tron
+  Author: telegram -> @jackslowfak
+  Port modifier: telegram -> @MrMiHa
 
-FBI 警告:
+Security Warning:
 
-  在使用生成的虚荣地址之前，请始终验证它是否与打印的私钥匹配。
-  并始终对地址进行多重签名以确保账户安全。
+  Always verify that generated addresses print correctly and match their private keys.
+  Always use multi-signature for addresses to ensure account security.
 )";
 
 #endif /* HPP_HELP */

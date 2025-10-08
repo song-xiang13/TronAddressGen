@@ -11,7 +11,7 @@ Usage: ./TronAddressGen [options]
 
   Mode:
     --matching          Match input, file or single address string
-    --generate          Generate specified number of random addresses (1-10000)
+    --generate          Generate specified number of random addresses (1-1,000,000)
 
   Matching Parameters:
     --prefix-count      Minimum prefix match count, default 0

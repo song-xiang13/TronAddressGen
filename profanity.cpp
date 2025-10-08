@@ -233,9 +233,9 @@ int main(int argc, char **argv)
 			return 1;
 		}
 
-		if (generateCount > 0 && generateCount > 10000)
+		if (generateCount > 0 && generateCount > 1000000)
 		{
-			std::cout << "error: generate count cannot exceed 10000" << std::endl;
+			std::cout << "error: generate count cannot exceed 1,000,000" << std::endl;
 			return 1;
 		}
 
@@ -264,10 +264,30 @@ int main(int argc, char **argv)
 		Mode mode = generateCount > 0 ? Mode::generate(generateCount) : Mode::matching(matchingInput);
 
 		if (generateCount > 0) {
-			// For generate mode, use Python script to generate correct addresses
+			// For generate mode, use efficient batch generation for large counts
 			std::cout << "Generate mode: Creating " << generateCount << " random Tron addresses..." << std::endl;
 
-			// Use the same random seed generation as the OpenCL version
+			if (generateCount >= 1000) {
+				// Use Python batch script for large counts (much faster)
+				std::string command = "python3 batch_generator.py " + std::to_string(generateCount);
+				if (!outputFile.empty()) {
+					command += " " + outputFile;
+				}
+
+				std::cout << "Using batch generation for large count..." << std::endl;
+				int result = system(command.c_str());
+
+				if (result == 0) {
+					std::cout << "Batch generation completed successfully!" << std::endl;
+				} else {
+					std::cout << "Error: Batch generation failed" << std::endl;
+					return 1;
+				}
+
+				return 0;
+			}
+
+			// For small counts, use individual generation
 			for (size_t i = 0; i < generateCount; i++) {
 				// Generate random private key (32 bytes)
 				std::random_device rd;
@@ -311,7 +331,7 @@ int main(int argc, char **argv)
 				         << " Address: " << tronAddress << std::endl;
 
 				if (!outputFile.empty()) {
-					std::ofstream file(outputFile, std::ios::app);
+					std::ofstream file(outputFile, i == 0 ? std::ios::out : std::ios::app);
 					if (file.is_open()) {
 						file << strPrivate << "," << tronAddress << std::endl;
 						file.close();
